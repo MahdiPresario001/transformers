@@ -2920,19 +2920,18 @@ class GenerationMixin:
             model_inputs.update({"output_attentions": output_attentions} if output_attentions else {})
             model_inputs.update({"output_hidden_states": output_hidden_states} if output_hidden_states else {})
     
-            # Assume outputs is a list
             outputs = self(**model_inputs, return_dict=True)
     
             if synced_gpus and this_peer_finished:
                 continue
     
-            next_token_logits_list = []
-            for output in outputs:
-                next_token_logits_list.append(output.logits[:, -1, :])
+            # Assuming outputs.logits is a list where each element corresponds to logits for an input in the batch
+            next_token_logits_list = [logit[:, -1, :] for logit in outputs.logits]
     
-            next_token_scores_list = []
-            for next_token_logits in next_token_logits_list:
-                next_token_scores_list.append(logits_processor(input_ids, next_token_logits.clone().float()))
+            next_token_scores_list = [
+                logits_processor(input_ids, next_token_logits.clone().float())
+                for next_token_logits in next_token_logits_list
+            ]
     
             if return_dict_in_generate:
                 if output_scores:
@@ -2941,26 +2940,24 @@ class GenerationMixin:
                     raw_logits.append(next_token_logits_list)
                 if output_attentions:
                     decoder_attentions.append(
-                        (output.decoder_attentions,) if self.config.is_encoder_decoder else (output.attentions,)
+                        (outputs.decoder_attentions,) if self.config.is_encoder_decoder else (outputs.attentions,)
                     )
                     if self.config.is_encoder_decoder:
-                        cross_attentions.append(output.cross_attentions)
+                        cross_attentions.append(outputs.cross_attentions)
     
                 if output_hidden_states:
                     decoder_hidden_states.append(
-                        (output.decoder_hidden_states,)
+                        (outputs.decoder_hidden_states,)
                         if self.config.is_encoder_decoder
-                        else (output.hidden_states,)
+                        else (outputs.hidden_states,)
                     )
     
-            next_tokens_list = []
-            for next_token_scores in next_token_scores_list:
-                if do_sample:
-                    probs = nn.functional.softmax(next_token_scores, dim=-1)
-                    next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
-                else:
-                    next_tokens = torch.argmax(next_token_scores, dim=-1)
-                next_tokens_list.append(next_tokens)
+            next_tokens_list = [
+                torch.multinomial(nn.functional.softmax(next_token_scores, dim=-1), num_samples=1).squeeze(1)
+                if do_sample
+                else torch.argmax(next_token_scores, dim=-1)
+                for next_token_scores in next_token_scores_list
+            ]
     
             next_tokens = torch.stack(next_tokens_list)
     
