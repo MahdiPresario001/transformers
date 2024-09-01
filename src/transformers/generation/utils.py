@@ -2959,12 +2959,14 @@ class GenerationMixin:
                 for next_token_scores in next_token_scores_list
             ]
     
-            next_tokens = torch.stack(next_tokens_list)
+            # Stack all next_tokens to ensure they have consistent dimensions
+            next_tokens = torch.stack(next_tokens_list, dim=1)
     
             if has_eos_stopping_criteria:
-                next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
+                next_tokens = next_tokens * unfinished_sequences[:, None] + pad_token_id * (1 - unfinished_sequences[:, None])
     
-            input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
+            # Ensure that input_ids and next_tokens have compatible dimensions
+            input_ids = torch.cat([input_ids, next_tokens], dim=-1)
             if streamer is not None:
                 streamer.put(next_tokens.cpu())
             model_kwargs = self._update_model_kwargs_for_generation(
