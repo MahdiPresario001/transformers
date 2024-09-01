@@ -2920,12 +2920,15 @@ class GenerationMixin:
             model_inputs.update({"output_attentions": output_attentions} if output_attentions else {})
             model_inputs.update({"output_hidden_states": output_hidden_states} if output_hidden_states else {})
     
+            # Assume outputs is a list
             outputs = self(**model_inputs, return_dict=True)
     
             if synced_gpus and this_peer_finished:
                 continue
     
-            next_token_logits_list = outputs.logits[:, -1, :]
+            next_token_logits_list = []
+            for output in outputs:
+                next_token_logits_list.append(output.logits[:, -1, :])
     
             next_token_scores_list = []
             for next_token_logits in next_token_logits_list:
@@ -2938,16 +2941,16 @@ class GenerationMixin:
                     raw_logits.append(next_token_logits_list)
                 if output_attentions:
                     decoder_attentions.append(
-                        (outputs.decoder_attentions,) if self.config.is_encoder_decoder else (outputs.attentions,)
+                        (output.decoder_attentions,) if self.config.is_encoder_decoder else (output.attentions,)
                     )
                     if self.config.is_encoder_decoder:
-                        cross_attentions.append(outputs.cross_attentions)
+                        cross_attentions.append(output.cross_attentions)
     
                 if output_hidden_states:
                     decoder_hidden_states.append(
-                        (outputs.decoder_hidden_states,)
+                        (output.decoder_hidden_states,)
                         if self.config.is_encoder_decoder
-                        else (outputs.hidden_states,)
+                        else (output.hidden_states,)
                     )
     
             next_tokens_list = []
@@ -3006,6 +3009,7 @@ class GenerationMixin:
                 )
         else:
             return input_ids
+
 
     def _temporary_reorder_cache(self, past_key_values, beam_idx):
         """
